@@ -8,7 +8,7 @@
 #include <sys/wait.h>
 #include <fcntl.h>
 #include <termios.h>
-#include <dirent.h>
+#include <glob.h>
 
 #define MAXTOKEN 256 // max number of tokens for a command
 #define MAXLINE 1024 // max number of characters from user input
@@ -72,8 +72,7 @@ int unset_fun(char * args[]){
 int command_fun(char * args[], bool background,bool stdin_redirect,char *input_file,bool stdout_redirect,char *output_file,bool characters_mul){
 	int err = -1;
 	int fileDescriptor; // between 0 and 19, describing the output or input file
-	char *arg_list[MAXTOKEN];
-	
+	 
 	if((pid=fork())==-1){
 		printf("Creat child process failed\n");
 		return -1;
@@ -207,49 +206,34 @@ int command_fun(char * args[], bool background,bool stdin_redirect,char *input_f
 			  "-l",
 			  NULL };*/
 			if (characters_mul){
-				DIR *dir_ptr;
-				struct dirent *direntp;  
-				
-				dir_ptr = opendir(currentDirectory);
-				
-				if(dir_ptr){
-					int i;
-					
-					for(i=0;args[i]!=NULL;i++) {
-						arg_list[i]=args[i];
-						//printf("%d:%s\n",i,args[i]);
-						//printf("orgin[%d]:%s\n",i,arg_list[i]);
-					}
-					/*int j=0;
-					arg_list[i] = NULL;
-					while(arg_list[j]!=NULL) {
-						printf("%d:%s\n",j,arg_list[j]);
-						j++;
-					}*/
-					while(direntp = readdir(dir_ptr)){
-						if(!strcmp(direntp->d_name,"..") || !strcmp(direntp->d_name,".")){
-							continue;
-						}
-						arg_list[i++] = direntp->d_name;
-						//printf("%d:%s\n",i-1,arg_list[i-1]);
-					}
-					closedir(dir_ptr);  
-					arg_list[i] = NULL;
-					int j=0;
-					while(arg_list[j]!=NULL) {
-						printf("%d:%s\n",j,arg_list[j]);
+				glob_t globbuf;
+				int i=0;
+				int j=0;
+				printf("???????\n");
+				for(;args[i]!=NULL;i++){
+					if(strstr(args[i],"*") == NULL){
+						globbuf.gl_pathv[j]=args[i];
+						
+						printf("path[%d]:%s\n",j,args[i]);
 						j++;
 					}
-					if(execvp(arg_list[0],arg_list)==err){
-						printf("Command not found.\n");
-						if (stdout_redirect){
-							dup2(standardOut, STDOUT_FILENO);
-						}
-						if (stdin_redirect){
-							dup2(standardIn, STDIN_FILENO);
-						}
-						kill(getpid(),SIGTERM);
+					else{
+						glob(args[i], GLOB_DOOFFS, NULL, &globbuf);
+						printf("glob:%s\n",args[i]);
 					}
+					 
+				}
+				globbuf.gl_offs = j;
+				//execvp("ls", &globbuf.gl_pathv[0]);
+				if(execvp(args[0],&globbuf.gl_pathv[0])==err){
+					printf("Command not found.\n");
+					if (stdout_redirect){
+						dup2(standardOut, STDOUT_FILENO);
+					}
+					if (stdin_redirect){
+						dup2(standardIn, STDIN_FILENO);
+					}
+					kill(getpid(),SIGTERM);
 				}
 			}
 			else if(execvp(args[0],args)==err){
@@ -497,10 +481,10 @@ int commandHandler(char * args[]){
 			background = true;
 			continue;
 		}
-		else if(strcmp(args[j],"*") == 0){
+		else if(strstr(args[j],"*") != NULL){
 			characters_mul = true;
-			continue;
 		}
+		
 		else if(strcmp(args[j],">") == 0){
 			stdout_redirect = true;
 			j++;
